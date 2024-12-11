@@ -1,0 +1,269 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>clientwindow</class>
+ <widget class="QDialog" name="clientwindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>724</width>
+    <height>465</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Dialog</string>
+  </property>
+  <property name="styleSheet">
+   <string notr="true">background-color: 
+#ddebf2;
+</string>
+  </property>
+  <widget class="QTabWidget" name="tabWidget">
+   <property name="geometry">
+    <rect>
+     <x>140</x>
+     <y>60</y>
+     <width>531</width>
+     <height>341</height>
+    </rect>
+   </property>
+   <property name="styleSheet">
+    <string notr="true"/>
+   </property>
+   <property name="currentIndex">
+    <number>3</number>
+   </property>
+   <widget class="QWidget" name="tab">
+    <attribute name="title">
+     <string>Create</string>
+    </attribute>
+    <widget class="QLineEdit" name="nomTF">
+     <property name="geometry">
+      <rect>
+       <x>80</x>
+       <y>50</y>
+       <width>131</width>
+       <height>31</height>
+      </rect>
+     </property>
+     <property name="styleSheet">
+      <string notr="true">background-color: white;
+border: 2px solid #ccc;       /* Light gray border */
+border-radius: 10px;           /* Adjust the radius for more or less rounding */
+padding: 5px;  </string>
+     </property>
+     <property name="placeholderText">
+      <string>enter nom ...</string>
+     </property>
+    </widget>
+    <widget class="QLineEdit" name="adresseTF">
+     <property name="geometry">
+      <rect>
+       <x>80</x>
+       <y>90</y>
+       <width>131</width>
+       <height>31</height>
+      </rect>
+     </property>
+     <property name="styleSheet">
+      <string notr="true">background-color: white;
+border: 2px solid #ccc;       /* Light gray border */
+border-radius: 10px;           /* Adjust the radius for more or less rounding */
+padding: 5px;  </string>
+     </property>
+     <property name="placeholderText">
+      <string>enter adresse ...</string>
+     </property>
+    </widget>
+    <widget class="QLineEdit" name="contactTF">
+     <property name="geometry">
+      <rect>
+       <x>80</x>
+       <y>130</y>
+       <width>131</width>
+       <height>31</height>
+      </rect>
+     </property>
+     <property name="styleSheet">
+      <string notr="true">background-color: white;
+border: 2px solid #ccc;       /* Light gray border */
+border-radius: 10px;           /* Adjust the radius for more or less rounding */
+padding: 5px;  </string>
+     </property>
+     <property name="placeholderText">
+      <string>enter contact  ...</string>
+     </property>
+    </widget>
+    <widget class="QLabel" name="label">
+     <property name="geometry">
+      <rect>
+       <x>20</x>
+       <y>60</y>
+       <width>49</width>
+       <height>16</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string>nom :</string>
+     </property>
+    </widget>
+    <widget class="QLabel" name="label_2">
+     <property name="geometry">
+      <rect>
+       <x>20</x>
+       <y>100</y>
+       <width>49</width>
+       <height>16</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string>adresse :</string>
+     </property>
+    </widget>
+    <widget class="QLabel" name="label_3">
+     <property name="geometry">
+      <rect>
+       <x>20</x>
+       <y>140</y>
+       <width>49</width>
+       <height>16</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string>contact :</string>
+     </property>
+    </widget>
+    <widget class="QPushButton" name="createButton">
+     <property name="geometry">
+      <rect>
+       <x>340</x>
+       <y>180</y>
+       <width>75</width>
+       <height>24</height>
+      </rect>
+     </property>
+     <property name="styleSheet">
+      <string notr="true">background-color: #047e1b;
+color: white;
+font-weight: bold;
+border-radius: 10px; /* Adjust the radius for more or less rounding */</string>
+     </property>
+     <property name="text">
+      <string>Create</string>
+     </property>
+    </widget>
+   </widget>
+   <widget class="QWidget" name="tab2">
+    <attribute name="title">
+     <string>Liste</string>
+    </attribute>
+    <widget class="QTableView" name="clientTableView">
+     <property name="geometry">
+      <rect>
+       <x>10</x>
+       <y>50</y>
+       <width>441</width>
+       <height>181</height>
+      </rect>
+     </property>
+    </widget>
+    <widget class="QPushButton" name="refreshButton">
+     <property name="geometry">
+      <rect>
+       <x>400</x>
+       <y>250</y>
+       <width>75</width>
+       <height>24</height>
+      </rect>
+     </property>
+     <property name="styleSheet">
+      <string notr="true">background-color: #047e1b;
+color: white;
+font-weight: bold;
+border-radius: 10px; /* Adjust the radius for more or less rounding */</string>
+     </property>
+     <property name="text">
+      <string>Refresh</string>
+     </property>
+    </widget>
+    <widget class="QPushButton" name="deleteButton">
+     <property name="geometry">
+      <rect>
+       <x>280</x>
+       <y>250</y>
+       <width>75</width>
+       <height>24</height>
+      </rect>
+     </property>
+     <property name="styleSheet">
+      <string notr="true">background-color: #047e1b;
+color: white;
+font-weight: bold;
+border-radius: 10px; /* Adjust the radius for more or less rounding */</string>
+     </property>
+     <property name="text">
+      <string>Delete</string>
+     </property>
+    </widget>
+    <widget class="QLineEdit" name="searchLineEdit">
+     <property name="geometry">
+      <rect>
+       <x>310</x>
+       <y>10</y>
+       <width>121</width>
+       <height>31</height>
+      </rect>
+     </property>
+     <property name="toolTip">
+      <string/>
+     </property>
+     <property name="styleSheet">
+      <string notr="true">background-color: white;
+border: 2px solid #ccc;       /* Light gray border */
+border-radius: 10px;           /* Adjust the radius for more or less rounding */
+padding: 5px;  </string>
+     </property>
+     <property name="placeholderText">
+      <string>Search</string>
+     </property>
+    </widget>
+    <widget class="QPushButton" name="pdfButton">
+     <property name="geometry">
+      <rect>
+       <x>20</x>
+       <y>270</y>
+       <width>75</width>
+       <height>24</height>
+      </rect>
+     </property>
+     <property name="styleSheet">
+      <string notr="true">background-color: #047e1b;
+color: white;
+font-weight: bold;
+border-radius: 10px; /* Adjust the radius for more or less rounding */</string>
+     </property>
+     <property name="text">
+      <string>PDF</string>
+     </property>
+    </widget>
+   </widget>
+   <widget class="QWidget" name="statTab">
+    <attribute name="title">
+     <string>Statestiques</string>
+    </attribute>
+   </widget>
+   <widget class="QWidget" name="tab_3">
+    <attribute name="title">
+     <string>Page</string>
+    </attribute>
+   </widget>
+   <widget class="QWidget" name="tab_4">
+    <attribute name="title">
+     <string>Page</string>
+    </attribute>
+   </widget>
+  </widget>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
