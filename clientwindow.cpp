@@ -22,8 +22,12 @@ clientwindow::clientwindow(Connection &conn, QWidget *parent) :
     ui->setupUi(this);
 
     // Initialize the model with the correct database connection
+    QSqlTableModel* model;  // Declare in header file
+
+    // In constructor:
     model = new QSqlTableModel(this, QSqlDatabase::database());
-    model->setTable("client");  // Try lowercase table name
+    model->setTable("client");
+    model->select();  // Load the data
 
     // Check if the table exists and is accessible
     if (!model->select()) {

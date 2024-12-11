@@ -1,6 +1,7 @@
 #ifndef CLIENTWINDOW_H
 #define CLIENTWINDOW_H
 
+
 #include <QDialog>
 #include <QSqlTableModel>
 #include "connection.h"

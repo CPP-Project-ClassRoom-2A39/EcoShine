@@ -1,6 +1,7 @@
 #ifndef MESSAGEDIALOG_H
 #define MESSAGEDIALOG_H
 
+
 #include <QDialog>
 #include <QVBoxLayout>
 #include <QTextEdit>
