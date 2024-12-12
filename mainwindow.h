@@ -1,35 +1,23 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 #include "ui_mainwindow.h"
+#include "employe.h"
 #include <QMainWindow>
-#include "produit.h"
 #include <QTableView>
-#include <QDebug>
-#include <QMainWindow>
-
-#include <QSqlQueryModel>
-#include <QSqlQuery>
-#include <QSqlError>
-
 #include <QtCharts/QChartView>
 #include <QtCharts/QPieSeries>
 #include <QtCharts/QPieSlice>
-
+#include <QMap>
+#include <QMessageBox>
+#include <QDialog>
+#include <QVBoxLayout>
+#include <QtCharts/QChartView>
+#include <QTableWidgetItem>
+#include "smartBin.h"
 #include <QSerialPort>
-
-#include <QMainWindow>
-#include <QSqlDatabase>
-
-
-
-
-
-
-
 namespace Ui {
 class MainWindow;
 }
-
 
 class MainWindow : public QMainWindow
 {
@@ -39,40 +27,31 @@ public:
     explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 private slots:
-    void on_pushButton_ajouter_clicked();
-    void on_pushButton_supprimer_4_clicked();
-    void on_pushButton_modifier_clicked();
-    void on_pushButton_afficher_clicked();
-    void on_pushButton_afficher_tri_clicked();
-    void on_pushButton_afficher_tri2_clicked();
-    void on_pushButton_recherche_clicked();
-    void exporterVersPDF();
+
+    void on_pushButton_ajouter_e_clicked(); // Add this line
+    void on_pushButton_supprimer_e_clicked();
+    void on_pushButton_modifier_e_clicked();
+    void on_pushButton_recherche_e_clicked();
+    void on_pushButton_exporter_e_clicked();
+    void on_pushButton_trier_e_clicked();
     void afficherStatistiques();
-    void checkStock();
-    void onButtonOuiClicked();
-    void on_buttonEnvoyer_clicked();
-    void onButtonNonClicked();
-    void toggleBuzzer();
-    void on_pushButton_13_clicked();
-    void on_pushButton_10_clicked();
-    void readFromArduino();
-
-    void changeProductState(const QString& newState);
-    void updateProductState(const QString& newState);
-    void resetProductStateToNormal();
-
-
-
-
-
+    void on_pushButton_afficher_clicked();
+    void on_pushButton_prime_clicked();
+    void on_pushButton_employe_du_mois_clicked();
+    void on_pushButton_smart_bin_clicked();
+    void readArduinoData();
 
 private:
     Ui::MainWindow *ui;
-    Produit *monProduit;
-    Produit ProduitObj;
-    Produit ProduitTemp;
-    QSqlQueryModel *model;             // Interface utilisateur générée par Qt Designer
-    QSerialPort *serialPort;
-    QSqlDatabase db;
+    QSerialPort *arduino;
+    QString arduinoBuffer;
+    employe *monEmploye;
+    employe employeObj;
+    employe E;
+    QSqlQueryModel *model;
+    void colorerDates();
+    SmartBin *smartBin;
+
 };
+
 #endif // MAINWINDOW_H
