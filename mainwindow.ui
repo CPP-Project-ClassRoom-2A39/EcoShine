@@ -3420,7 +3420,7 @@ background-color: #3dc3ff; color: white; border: none;</string>
        <string notr="true"/>
       </property>
       <property name="currentIndex">
-       <number>1</number>
+       <number>2</number>
       </property>
       <widget class="QWidget" name="createTab">
        <attribute name="title">
@@ -3646,9 +3646,9 @@ border-radius: 10px; /* Adjust the radius for more or less rounding */</string>
         <string>Chat</string>
        </attribute>
       </widget>
-      <widget class="QWidget" name="clientTabEmpty">
+      <widget class="QWidget" name="ratingTab">
        <attribute name="title">
-        <string>Page</string>
+        <string>Rating</string>
        </attribute>
       </widget>
      </widget>

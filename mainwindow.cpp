@@ -285,7 +285,7 @@ MainWindow::MainWindow(QWidget *parent) :
 
 
     // Find tab_3 and set up its layout
-    if (QWidget* reviewTab = ui->tab_3) {
+    if (QWidget* reviewTab = ui->ratingTab) {
         QVBoxLayout* mainLayout = new QVBoxLayout(reviewTab);
 
         // Create horizontal layout for stars
