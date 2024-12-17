@@ -16,7 +16,8 @@
 #include <QPainter>
 #include <QFileDialog>
 #include <QSqlDatabase>
-
+#include <QSqlRecord>
+#include <QSqlQuery>
 #include <QTimer>
 #include <QStandardItemModel>
 
@@ -55,6 +56,28 @@
 #include <QSerialPortInfo>
 #include <QThread>
 #include <QVariant>
+
+#include"employe.h"
+#include"smartbin.h"
+
+// integration amine rjab
+
+
+#include "updateclientdialog.h"
+#include <QMessageBox>
+#include <QSqlQuery>
+#include <QSqlTableModel>
+#include <QSqlError>
+#include <QDebug>
+#include <QtCharts/QPieSeries>
+#include <QtCharts/QChartView>
+#include <QPrinter>
+#include <QPainter>
+#include <QFileDialog>
+#include <QDateTime>
+
+
+
 s service;
 
 
@@ -65,10 +88,13 @@ QSqlDatabase db;
 
 Produit P;
 Partenaire P1;
+employe E;
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
     ui(new Ui::MainWindow),
+
     serialPort(new QSerialPort(this))  // Initialisation de l'objet QSerialPort
+
 
 {
     ui->setupUi(this);
@@ -77,6 +103,24 @@ MainWindow::MainWindow(QWidget *parent) :
     trayIcon = new QSystemTrayIcon(this);
     trayIcon->setIcon(QIcon(":/res/res.png"));
     trayIcon->setVisible(true);
+    //EMPLOYE
+    monEmploye = new employe;
+    smartBin= new SmartBin(this);
+    ui->tableView_e->setModel(E.afficher());
+    connect(ui->pushButton_statistique_e, &QPushButton::clicked, this, &MainWindow::afficherStatistiquesE);
+    arduino = new QSerialPort(this);
+    foreach (const QSerialPortInfo &info, QSerialPortInfo::availablePorts()) {
+        if (info.vendorIdentifier() == 0x2341 && info.productIdentifier() == 0x0043) { // Remplacez par les IDs de votre Arduino
+            arduino->setPortName(info.portName());
+        }
+    }
+
+    if (arduino->open(QIODevice::ReadOnly)) {
+        arduino->setBaudRate(QSerialPort::Baud9600);
+        connect(arduino, &QSerialPort::readyRead, this, &MainWindow::readArduinoData);
+    } else {
+        QMessageBox::critical(this, "Erreur", "Impossible de se connecter à Arduino.");
+    }
 
 
     monPartenaire = new Partenaire;
@@ -123,7 +167,7 @@ MainWindow::MainWindow(QWidget *parent) :
 
 
     serialPort = new QSerialPort(this);
-    serialPort->setPortName("COM7");  // Changez COM3 selon le port de votre Arduino
+    serialPort->setPortName("COM3");  // Changez COM3 selon le port de votre Arduino
     serialPort->setBaudRate(QSerialPort::Baud115200);
     serialPort->setDataBits(QSerialPort::Data8);
     serialPort->setParity(QSerialPort::NoParity);
@@ -146,9 +190,154 @@ MainWindow::MainWindow(QWidget *parent) :
     connect(ui->buzzerButton, &QPushButton::clicked, this, &MainWindow::toggleBuzzer);
 
 
-    // Connecter le bouton buzzer à une fonction pour contrôler le buzzer
-    connect(ui->pushButton_lock, &QPushButton::clicked, this, &MainWindow::toggleBuzzerdoorlock);
+    // integration amine rjab
+
+
+    cnx.createconnect();
+
+    // Initialize the tableModel with the correct database connection
+    tableModel = new QSqlTableModel(this, cnx.db);
+
+    tableModel->setTable("client");
+
+    // Check if the table exists and is accessible
+    if (!tableModel->select()) {
+        qDebug() << "Error loading table:" << tableModel->lastError().text();
+        // Try with uppercase table name
+        tableModel->setTable("CLIENT");
+        if (!tableModel->select()) {
+            qDebug() << "Error loading table (uppercase):" << tableModel->lastError().text();
+        }
+    }
+
+    tableModel->setEditStrategy(QSqlTableModel::OnManualSubmit);
+
+    // Set the headers
+    tableModel->setHeaderData(0, Qt::Horizontal, tr("NOM"));
+    tableModel->setHeaderData(1, Qt::Horizontal, tr("CONTACT"));
+    tableModel->setHeaderData(2, Qt::Horizontal, tr("IDENTIFIANT"));
+    tableModel->setHeaderData(3, Qt::Horizontal, tr("ADRESSE"));
+
+    // Set up the table view
+    ui->clientTableView->setModel(tableModel);
+    ui->clientTableView->setSelectionMode(QAbstractItemView::SingleSelection);
+    ui->clientTableView->setSelectionBehavior(QAbstractItemView::SelectRows);
+    ui->clientTableView->setEditTriggers(QAbstractItemView::NoEditTriggers);
+
+    // Enable sorting
+    ui->clientTableView->setSortingEnabled(true);
+    tableModel->setSort(0, Qt::AscendingOrder); // Initially sort by first column (NOM)
+
+    // Make columns stretch to fill the available space
+    ui->clientTableView->horizontalHeader()->setStretchLastSection(true);
+    ui->clientTableView->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+
+    connect(ui->searchLineEdit, &QLineEdit::textChanged, this, &MainWindow::on_searchLineEdit_textChanged);
+
+    // Initialize chart components
+    statsChart = new QChart();
+    chartView = new QChartView(statsChart);
+    chartView->setRenderHint(QPainter::Antialiasing);
+
+    // Find the statTab and set up its layout
+    if (QWidget* statTab = ui->statTab) {  // Changed from tabWidget->widget(1) to ui->statTab
+        QVBoxLayout* layout = new QVBoxLayout(statTab);
+        layout->addWidget(chartView);
+        statTab->setLayout(layout);
+    } else {
+        qDebug() << "Failed to find statTab";
+    }
+
+    // Update the stats initially
+    updateStatsChart();
+
+    // Connect refresh button to also update stats
+    connect(ui->refreshButton, &QPushButton::clicked, this, &MainWindow::updateStatsChart);
+
+    // Connect tab widget's currentChanged signal to update stats when switching to stats tab
+    connect(ui->tabWidget, &QTabWidget::currentChanged, this, [this](int index) {
+        if (ui->tabWidget->widget(index) == ui->statTab) {  // Changed to check for statTab directly
+            updateStatsChart();
+        }
+    });
+
+    // Debug: Print the number of rows in the tableModel
+    qDebug() << "Number of rows in tableModel:" << tableModel->rowCount();
+
+    // Run a test query to verify data exists
+    QSqlQuery testQuery(cnx.db);
+
+    if (testQuery.exec("SELECT * FROM CLIENT")) {
+        int count = 0;
+        while (testQuery.next()) {
+            count++;
+        }
+        qDebug() << "Number of records in direct query:" << count;
+    } else {
+        qDebug() << "Test query failed:" << testQuery.lastError().text();
+    }
+
+    connect(ui->refreshButton, &QPushButton::clicked, this, &MainWindow::refreshClientList);
+    connect(ui->pdfButton, &QPushButton::clicked, this, &MainWindow::on_pdfButton_clicked);
+
+    // Initialize the rating system
+    currentRating = 0;
+
+
+    // Find tab_3 and set up its layout
+    if (QWidget* reviewTab = ui->tab_3) {
+        QVBoxLayout* mainLayout = new QVBoxLayout(reviewTab);
+
+        // Create horizontal layout for stars
+        QHBoxLayout* starsLayout = new QHBoxLayout();
+
+        // Create star buttons
+        for (int i = 0; i < 5; i++) {
+            QPushButton* starButton = new QPushButton("☆");
+            starButton->setFixedSize(40, 40);
+            starButton->setStyleSheet(
+                "QPushButton { font-size: 24px; border: none; } "
+                "QPushButton:hover { color: gold; }");
+
+            // Connect each button
+            connect(starButton, &QPushButton::clicked, this, [this, i]() {
+                updateStarRating(i + 1);
+            });
+
+            starsLayout->addWidget(starButton);
+            starButtons.append(starButton);
+        }
+
+        // Add stretches for centering
+        starsLayout->insertStretch(0);
+        starsLayout->addStretch();
+
+        // Create description text edit
+        QTextEdit* descriptionEdit = new QTextEdit();
+        descriptionEdit->setPlaceholderText("Enter your review here...");
+        descriptionEdit->setMaximumHeight(100);
+        descriptionEdit->setObjectName("descriptionEdit");
+
+        // Create submit button
+        QPushButton* submitButton = new QPushButton("Submit Review");
+        submitButton->setObjectName("submitReviewButton");
+        connect(submitButton, &QPushButton::clicked, this, &MainWindow::on_submitReviewButton_clicked);
+
+        // Add widgets to main layout
+        mainLayout->addLayout(starsLayout);
+        mainLayout->addWidget(descriptionEdit);
+        mainLayout->addWidget(submitButton);
+        mainLayout->addStretch();
+
+        setupMessagingTab();
+        messageDialog = new MessageDialog(this);
+        connect(messageDialog, &MessageDialog::messageSent, this, &MainWindow::onPopupMessageReceived);
+
+    }
+
+
 }
+
 
 
 
@@ -159,9 +348,349 @@ MainWindow::~MainWindow()
     }
     delete serialPort;  // Libérer la mémoire
     delete ui;
+
+    // inetgration amine rjab
+
+    //        delete ui;
+    delete tableModel;
+    delete statsChart;    // Add this
+    delete chartView;     // Add this
+
 }
+//EMPLOYE*****************************************************************************************
+//ajouter un employe
+void MainWindow::on_pushButton_ajouter_e_clicked()
+{
+    //Récupération des informations saistes dans les 3 champs
+    int ID_E = ui->lineEdit_ID->text().toInt();
+    QString  NOM_E = ui->lineEdit_nom->text().trimmed();
+    QString PRENOM_E = ui->lineEdit_prenom->text().trimmed();
+    QString POSTE_E= ui->lineEdit_poste->text().trimmed();
+    float SALAIRE_E= ui->lineEdit_salaire->text().toFloat();
+    int HEURES_E = ui->lineEdit_h->text().toInt();
+    employe Emp(ID_E,NOM_E,PRENOM_E,POSTE_E,SALAIRE_E,HEURES_E);
 
+    bool test=Emp.ajouter();
+    if(test)
+    { ui->tableView_e->setModel(E.afficher());
+        QMessageBox::information(this, QObject::tr("Ajout effectué"),
 
+                                 QObject::tr("Lemploye a été ajouté avec succès."));
+
+    }
+    else
+        QMessageBox::critical(this, QObject::tr("Échec de l'ajout"),
+                              QObject::tr("L'ajout du l'employe a échoué."));
+}
+//supprimer un employe
+void MainWindow::on_pushButton_supprimer_e_clicked()
+{
+    int idASupprimer=ui->lineEdit_id_e->text().toInt();
+    if (monEmploye->supprimer(idASupprimer)) {
+        ui->tableView_e->setModel(E.afficher());
+        QMessageBox::information(this, "Succès", "employe supprimé avec succès");
+    } else {
+        QMessageBox::critical(this, "Erreur", "Échec de la suppression du employe");
+    }
+
+}
+//modifier un employe
+void MainWindow::on_pushButton_modifier_e_clicked()
+{
+    // Récupération des informations du formulaire
+    int ID_E = ui->lineEdit_ID->text().toInt();
+    QString NOM_E = ui->lineEdit_nom->text();
+    QString PRENOM_E = ui->lineEdit_prenom->text();
+    QString POSTE_E = ui->lineEdit_poste->text();
+    float SALAIRE_E = ui->lineEdit_salaire->text().toFloat();
+    int HEURES_E = ui->lineEdit_h->text().toInt();
+    // Création d'un objet employe avec les nouvelles informations
+    employe Emp(ID_E,NOM_E, PRENOM_E, POSTE_E, SALAIRE_E,HEURES_E);
+    // Appel de la fonction modifier avec l'ID pour identifier l'employe à modifier
+    bool resultat = Emp.modifier();
+    if(resultat) {
+        ui->tableView_e->setModel(E.afficher()); // Met à jour l'affichage
+        QMessageBox::information(this, "Succès", "Employe modifié avec succès");
+    } else {
+        QMessageBox::critical(this, "Erreur", "Échec de la modification du l'employe");
+    }
+}
+// Fonction d'affichage des employe
+void MainWindow::on_pushButton_afficher_e_clicked()
+{
+    ui->tableView_e->setModel(monEmploye->afficher());  // Affichage des employes
+}
+//rechercher un employe
+void MainWindow::on_pushButton_recherche_e_clicked()
+{
+    // Récupérer la valeur saisie dans le lineEdit
+    int id_a_chercher = ui->lineEdit_id_e_recherche->text().toInt();
+    // Construire la requête SQL
+    QSqlQuery query;
+    query.prepare("SELECT * FROM SYSTEM.EMPLOYES WHERE ID_E = :id");
+    query.bindValue(":id", id_a_chercher);
+    query.exec();
+    // Créer un nouveau modèle et l'affecter au QTableView
+    QSqlQueryModel *model = new QSqlQueryModel();
+    model->setQuery(std::move(query));
+    ui->tableView_e->setModel(model);
+
+}
+//exporter en fichier PDF
+void MainWindow::on_pushButton_exporter_e_clicked() {
+    QString fileName = QFileDialog::getSaveFileName(this, "Enregistrer en PDF", "", "PDF (*.pdf)");
+    if (fileName.isEmpty()) {
+        QMessageBox::information(this, "Annulation", "L'export a été annulé.");
+        return;
+    }
+    QPdfWriter pdfWriter(fileName);
+    pdfWriter.setPageSize(QPageSize(QPageSize::A4)); // Taille A4
+    pdfWriter.setPageMargins(QMarginsF(0, 0, 0, 0)); // Marges plus grandes (50px)
+    QPainter painter(&pdfWriter);
+
+    // Réglage de la police pour une meilleure lisibilité (taille de police 12)
+    QFont font("Times New Roman",8);
+    painter.setFont(font);
+
+    // Récupération du modèle et des dimensions de la table
+    QTableView *tableView = ui->tableView_e;
+    QAbstractItemModel *model = tableView->model();
+    int rowCount = model->rowCount();
+    int columnCount = model->columnCount();
+
+    // Calcul de la largeur des colonnes pour s'adapter à la largeur de la page A4
+    int pageWidth = pdfWriter.width() - 60; // Largeur de la page moins les marges (100px)
+    QVector<int> columnWidths(columnCount);
+
+    // Augmenter la largeur des colonnes en modifiant le facteur de distribution
+    int totalColumnWidth = pageWidth / 2; // Par exemple, diviser par 2 pour augmenter les colonnes
+    for (int col = 0; col < columnCount; ++col) {
+        columnWidths[col] = totalColumnWidth / columnCount; // Distribution modifiée des colonnes
+    }
+
+    // Position initiale de l’écriture
+    int x = 30; // À partir de la marge de gauche
+    int y = 50; // À partir du haut avec une marge
+
+    // Dessin de l'en-tête du tableau avec une hauteur de 1000px pour les cellules
+    for (int col = 0; col < columnCount; ++col) {
+        QRect rect(x, y, columnWidths[col], 1000); // Hauteur des cellules fixée à 1000px
+        painter.drawRect(rect); // Bordure de la cellule
+        painter.drawText(rect, Qt::AlignCenter, model->headerData(col, Qt::Horizontal).toString());
+        x += columnWidths[col]; // Déplacement horizontal pour la prochaine cellule
+    }
+
+    y += 1000; // Espacement pour passer à la ligne suivante avec la hauteur définie
+
+    // Dessin des lignes de la table (lignes et colonnes agrandies)
+    for (int row = 0; row < rowCount; ++row) {
+        x = 50; // Réinitialisation de x pour chaque nouvelle ligne
+        for (int col = 0; col < columnCount; ++col) {
+            QRect rect(x, y, columnWidths[col], 1000); // Hauteur des cellules fixée à 1000px
+            painter.drawRect(rect); // Bordure de la cellule
+            QString cellText = model->data(model->index(row, col)).toString();
+            painter.drawText(rect, Qt::AlignCenter, cellText);
+            x += columnWidths[col]; // Déplacement horizontal pour la prochaine cellule
+        }
+        y += 1000; // Espacement pour chaque nouvelle ligne avec la hauteur définie
+    }
+
+    painter.end();
+    QMessageBox::information(this, "Succès", "Le fichier PDF a été enregistré avec succès.");
+}
+//trier les employes
+void MainWindow::on_pushButton_trier_e_clicked() {
+    ui->tableView_e->setModel(E.afficherTrieParNom());
+    QMessageBox::information(this, "Succès", "Tri effectué par nom dans l'ordre croissant.");
+}
+//les statistiques des employes
+void MainWindow::afficherStatistiquesE() {
+    // Préparer la requête pour obtenir les données nécessaires
+    QSqlQuery query;
+    query.prepare("SELECT POSTE_E, COUNT(*) AS count FROM SYSTEM.EMPLOYES GROUP BY POSTE_E");
+
+    // Exécuter la requête et vérifier s'il y a des résultats
+    if (!query.exec()) {
+        QMessageBox::critical(this, tr("Erreur"), tr("Échec de l'obtention des statistiques"));
+        return;
+    }
+
+    // Stocker les données dans une map pour compter les employés par poste
+    QMap<QString, int> quantitesParPoste;
+    while (query.next()) {
+        QString poste = query.value(0).toString();
+        int count = query.value(1).toInt();
+        quantitesParPoste[poste] = count;
+    }
+
+    // Vérifier qu'il y a des données pour générer les statistiques
+    if (quantitesParPoste.isEmpty()) {
+        QMessageBox::information(this, tr("Aucune donnée"), tr("Aucun poste d'employé disponible pour générer les statistiques."));
+        return;
+    }
+
+    // Créer une série de camembert et remplir avec les données
+    QPieSeries *series = new QPieSeries();
+    for (auto it = quantitesParPoste.begin(); it != quantitesParPoste.end(); ++it) {
+        QString poste = it.key();
+        int count = it.value();
+        series->append(poste, count);
+    }
+
+    // Rendre les labels visibles pour chaque part de camembert
+    for (QPieSlice *slice : series->slices()) {
+        slice->setLabelVisible(true);
+    }
+
+    // Créer un objet QChart et ajouter la série de camembert
+    QChart *chart = new QChart();
+    chart->addSeries(series);
+    chart->setTitle("Statistiques des employés par poste");
+
+    // Afficher le graphique dans un QChartView
+    QChartView *chartView = new QChartView(chart);
+    chartView->setRenderHint(QPainter::Antialiasing);
+
+    // Afficher le QChartView dans une fenêtre modale
+    QDialog *dialog = new QDialog(this);
+    QVBoxLayout *layout = new QVBoxLayout(dialog);
+    layout->addWidget(chartView);
+    dialog->setLayout(layout);
+    dialog->setWindowTitle("Statistiques des postes des employés");
+    dialog->resize(500, 400);
+    dialog->exec();
+}
+//calcul du prime d'un employe
+void MainWindow::on_pushButton_prime_clicked()
+{
+    // Étape 1 : Récupérer l'ID de l'employé depuis le champ de saisie
+    int employeID = ui->lineEdit_id->text().toInt();
+
+    // Étape 2 : Récupérer les informations de l'employé depuis la base de données
+    QSqlQuery query;
+    query.prepare("SELECT NOM_E, PRENOM_E, HEURES_E FROM SYSTEM.EMPLOYES WHERE ID_E = :id");
+    query.bindValue(":id", employeID);
+
+    if (!query.exec()) {
+        // Affichage d'un message d'erreur en cas de problème avec la requête
+        ui->textBrowser->setText("Erreur : Impossible de récupérer les données de l'employé.\n" +
+                                 query.lastError().text());
+        return;
+    }
+
+    if (!query.next()) {
+        // Aucun résultat trouvé
+        ui->textBrowser->setText("Erreur : Aucun employé trouvé avec l'ID " + QString::number(employeID));
+        return;
+    }
+
+    // Étape 3 : Extraire les données de l'employé
+    QString nom = query.value("NOM_E").toString();
+    QString prenom = query.value("PRENOM_E").toString();
+    int heuresTravaillees = query.value("HEURES_E").toInt();
+
+    // Étape 4 : Calculer les heures supplémentaires et la prime
+    int heuresSupplementaires = (heuresTravaillees > 12) ? (heuresTravaillees - 12) : 0;
+    double prime = heuresSupplementaires * 3.0; // 3 DT par heure supplémentaire
+
+    // Étape 5 : Préparer le message à afficher
+    QString message;
+    if (prime > 0) {
+        message = "L'employé " + nom + " " + prenom +
+                  " (ID : " + QString::number(employeID) + ")" +
+                  " a une prime de " + QString::number(prime) + " DT pour " +
+                  QString::number(heuresSupplementaires) + " heures supplémentaires.";
+    } else {
+        message = "L'employé " + nom + " " + prenom +
+                  " (ID : " + QString::number(employeID) + ")" +
+                  " n'a pas d'heures supplémentaires et donc pas de prime.";
+    }
+
+    // Étape 6 : Afficher le message dans le QTextBrowser
+    ui->textBrowser->setText(message);
+}
+//selection du l'employes du moins
+void MainWindow::on_pushButton_employe_du_mois_clicked()
+{
+    // Étape 1 : Rechercher tous les employés avec des heures supplémentaires
+    QSqlQuery query;
+    query.prepare("SELECT ID_E, NOM_E, PRENOM_E, HEURES_E, "
+                  "(HEURES_E - 12) AS HEURES_SUPP "
+                  "FROM SYSTEM.EMPLOYES "
+                  "WHERE HEURES_E > 12");
+
+    if (!query.exec()) {
+        ui->textBrowser_2->setText("Erreur : Impossible de récupérer les employés du mois.\n" +
+                                   query.lastError().text());
+        return;
+    }
+
+    // Étape 2 : Trouver le maximum des heures supplémentaires
+    int maxHeuresSupp = 0;
+    QVector<QSqlRecord> employees;
+
+    while (query.next()) {
+        QSqlRecord record = query.record();
+        int heuresSupplementaires = record.value("HEURES_SUPP").toInt();
+        employees.append(record); // Stocker tous les employés dans un tableau
+        // Mettre à jour le maximum des heures supplémentaires
+        if (heuresSupplementaires > maxHeuresSupp) {
+            maxHeuresSupp = heuresSupplementaires;
+        }
+    }
+
+    // Étape 3 : Préparer le message pour l'employé du mois
+    QString message = "Félicitations ! Les employés du mois sont :\n\n";
+    bool found = false;
+
+    // Étape 4 : Afficher tous les employés ayant le même nombre d'heures supplémentaires
+    for (const QSqlRecord& record : employees) {
+        int heuresSupplementaires = record.value("HEURES_SUPP").toInt();
+        if (heuresSupplementaires == maxHeuresSupp) {
+            found = true;
+            int id = record.value("ID_E").toInt();
+            QString nom = record.value("NOM_E").toString();
+            QString prenom = record.value("PRENOM_E").toString();
+            int heuresTravaillees = record.value("HEURES_E").toInt();
+            double prime = heuresSupplementaires * 3.0;
+
+            message += "Nom : " + nom + "\n";
+            message += "Prénom : " + prenom + "\n";
+            message += "ID : " + QString::number(id) + "\n";
+            message += "Heures travaillées : " + QString::number(heuresTravaillees) + "\n";
+            message += "Heures supplémentaires : " + QString::number(heuresSupplementaires) + "\n";
+            message += "Prime : " + QString::number(prime) + " DT\n\n";
+        }
+    }
+
+    // Étape 5 : Vérifier si des employés ont été trouvés et afficher le message
+    if (found) {
+        ui->textBrowser_2->setText(message);
+    } else {
+        ui->textBrowser_2->setText("Erreur : Aucun employé trouvé avec des heures supplémentaires.");
+    }
+}
+//smartBin ardouino
+void MainWindow::readArduinoData() {
+    arduinoBuffer += arduino->readAll();
+
+    if (arduinoBuffer.contains("\n")) {
+        QStringList lines = arduinoBuffer.split("\n");
+        for (const QString &line : lines) {
+            if (line.trimmed().startsWith("Movement Count:")) {
+                QString countStr = line.split(":").last().trimmed();
+                int movementCount = countStr.toInt();
+                smartBin->setMovementCount(movementCount);
+            }
+        }
+        arduinoBuffer.clear();
+    }
+}
+void MainWindow::on_pushButton_smart_bin_clicked() {
+    QString binStatus = smartBin->getBinStatus();
+    ui->textBrowserb->setText(binStatus); // Affiche l'état de la poubelle dans l'interface
+}
+//******************************************************************************************************
 
 
 
@@ -547,11 +1076,6 @@ void MainWindow::verifierLivraisonDemain() {
 
 
 
-
-
-
-
-
 void MainWindow::on_pushButton_ajouter_clicked()
 {
     // Récupération des informations saisies dans les champs
@@ -566,7 +1090,7 @@ void MainWindow::on_pushButton_ajouter_clicked()
     // Appel à la méthode ajouter() de Produit
     bool test = P.ajouter();
     if (test) {
-         ui->tableView->setModel(P.afficher());  // Mise à jour de l'affichage
+        ui->tableView->setModel(P.afficher());  // Mise à jour de l'affichage
         QMessageBox::information(this, QObject::tr("Ajout effectué"),
                                  QObject::tr("Le produit a été ajouté avec succès."));
     } else {
@@ -1526,115 +2050,115 @@ void MainWindow::on_pushButton_10_clicked()
 
 void MainWindow::on_pushButton_43_clicked()
 {
-     ui->tabWidget->setCurrentIndex(0);
+    ui->tabWidget->setCurrentIndex(0);
 }
 
 
 void MainWindow::on_pushButton_44_clicked()
 {
-     ui->tabWidget->setCurrentIndex(0);
+    ui->tabWidget->setCurrentIndex(0);
 }
 
 
 void MainWindow::on_pushButton_45_clicked()
 {
-     ui->tabWidget->setCurrentIndex(0);
+    ui->tabWidget->setCurrentIndex(0);
 }
 
 
 void MainWindow::on_pushButton_53_clicked()
 {
-     ui->tabWidget->setCurrentIndex(1);
+    ui->tabWidget->setCurrentIndex(1);
 }
 
 
 void MainWindow::on_pushButton_54_clicked()
 {
-     ui->tabWidget->setCurrentIndex(1);
+    ui->tabWidget->setCurrentIndex(1);
 }
 
 
 void MainWindow::on_pushButton_55_clicked()
 {
-     ui->tabWidget->setCurrentIndex(1);
+    ui->tabWidget->setCurrentIndex(1);
 }
 
 
 void MainWindow::on_pushButton_50_clicked()
 {
-     ui->tabWidget->setCurrentIndex(2);
+    ui->tabWidget->setCurrentIndex(2);
 }
 
 
 void MainWindow::on_pushButton_51_clicked()
 {
-     ui->tabWidget->setCurrentIndex(2);
+    ui->tabWidget->setCurrentIndex(2);
 }
 
 
 void MainWindow::on_pushButton_52_clicked()
 {
-     ui->tabWidget->setCurrentIndex(2);
+    ui->tabWidget->setCurrentIndex(2);
 }
 
 
 void MainWindow::on_pushButton_58_clicked()
 {
-     ui->tabWidget->setCurrentIndex(3);
+    ui->tabWidget->setCurrentIndex(3);
 }
 
 
 void MainWindow::on_pushButton_59_clicked()
 {
-     ui->tabWidget->setCurrentIndex(3);
+    ui->tabWidget->setCurrentIndex(3);
 }
 
 
 void MainWindow::on_pushButton_60_clicked()
 {
-     ui->tabWidget->setCurrentIndex(3);
+    ui->tabWidget->setCurrentIndex(3);
 }
 
 
 void MainWindow::on_pushButton_7_clicked()
 {
-     ui->tabWidget->setCurrentIndex(4);
+    ui->tabWidget->setCurrentIndex(4);
 }
 
 
 void MainWindow::on_pushButton_clicked()
 {
-     ui->tabWidget->setCurrentIndex(4);
+    ui->tabWidget->setCurrentIndex(4);
 }
 
 
 void MainWindow::on_pushButton_38_clicked()
 {
-     ui->tabWidget->setCurrentIndex(4);
+    ui->tabWidget->setCurrentIndex(4);
 }
 
 
 void MainWindow::on_pushButton_4_clicked()
 {
-     ui->tabWidget->setCurrentIndex(4);
+    ui->tabWidget->setCurrentIndex(4);
 }
 
 
 void MainWindow::on_pushButton_46_clicked()
 {
-     ui->tabWidget->setCurrentIndex(4);
+    ui->tabWidget->setCurrentIndex(4);
 }
 
 
 void MainWindow::on_pushButton_47_clicked()
 {
-     ui->tabWidget->setCurrentIndex(4);
+    ui->tabWidget->setCurrentIndex(4);
 }
 
 
 void MainWindow::on_pushButton_8_clicked()
 {
-     ui->tabWidget->setCurrentIndex(5);
+    ui->tabWidget->setCurrentIndex(5);
 }
 
 
@@ -1703,3 +2227,487 @@ void MainWindow::on_pushButton_57_clicked()
     ui->tabWidget->setCurrentIndex(6);
 }
 
+void MainWindow::createClient()
+{
+    QString nom = ui->nomTF->text();
+    QString contact = ui->contactTF->text();
+    QString adresse = ui->adresseTF->text();
+
+    if (nom.isEmpty() || contact.isEmpty() || adresse.isEmpty()) {
+        QMessageBox::warning(this, "Input Error", "Please fill in all fields.");
+        return;
+    }
+
+    qDebug() << __FUNCTION__;
+    qDebug() << nom;
+    qDebug() << contact;
+    qDebug() << adresse;
+    QSqlQuery query(cnx.db);
+    query.prepare("INSERT INTO CLIENT (NOM, ADRESSE, CONTACT) VALUES (:NOM, :ADRESSE, :CONTACT)");
+    query.bindValue(":NOM", nom);
+    query.bindValue(":ADRESSE", adresse);
+    query.bindValue(":CONTACT", contact);
+
+    if (query.exec()) {
+        QMessageBox::information(this, "Success", "Client added successfully!");
+        // Clear the input fields
+        ui->nomTF->clear();
+        ui->contactTF->clear();
+        ui->adresseTF->clear();
+        // Refresh the table view
+        refreshClientList();
+
+        // Debug: Verify the new row count
+        qDebug() << "After insert, row count:" << tableModel->rowCount();
+    } else {
+        QMessageBox::critical(this, "Database Error", "Failed to insert client: " + query.lastError().text());
+    }
+}
+
+void MainWindow::refreshClientList()
+{
+    // Store current filter and sorting
+    QString currentFilter = tableModel->filter();
+    int currentSortColumn = ui->clientTableView->horizontalHeader()->sortIndicatorSection();
+    Qt::SortOrder currentSortOrder = ui->clientTableView->horizontalHeader()->sortIndicatorOrder();
+
+    // Debug: Print current row count
+    qDebug() << "Before refresh, row count:" << tableModel->rowCount();
+
+    // Force a complete reload
+    tableModel->setTable("CLIENT");
+
+    if (!tableModel->select()) {
+        qDebug() << "Refresh failed:" << tableModel->lastError().text();
+        QMessageBox::warning(this, "Refresh Error",
+                             "Failed to refresh client list: " + tableModel->lastError().text());
+        return;
+    }
+
+    // Reset headers after refresh
+    tableModel->setHeaderData(0, Qt::Horizontal, tr("NOM"));
+    tableModel->setHeaderData(1, Qt::Horizontal, tr("CONTACT"));
+    tableModel->setHeaderData(2, Qt::Horizontal, tr("IDENTIFIANT"));
+    tableModel->setHeaderData(3, Qt::Horizontal, tr("ADRESSE"));
+
+    // Reapply the filter if there was one
+    if (!currentFilter.isEmpty()) {
+        tableModel->setFilter(currentFilter);
+    }
+
+    // Reapply the sorting
+    tableModel->setSort(currentSortColumn, currentSortOrder);
+    tableModel->select();
+
+    // Debug: Print new row count
+    qDebug() << "After refresh, row count:" << tableModel->rowCount();
+
+    updateStatsChart();
+
+}
+
+void MainWindow::on_createButton_clicked()
+{
+    createClient();
+}
+
+void MainWindow::on_clientTableView_doubleClicked(const QModelIndex &index)
+{
+    // Get the row data
+    QString id = tableModel->data(tableModel->index(index.row(), 2)).toString(); // IDENTIFIANT column
+    QString nom = tableModel->data(tableModel->index(index.row(), 0)).toString(); // NOM column
+    QString contact = tableModel->data(tableModel->index(index.row(), 1)).toString(); // CONTACT column
+    QString adresse = tableModel->data(tableModel->index(index.row(), 3)).toString(); // ADRESSE column
+
+    // Create and show the update dialog
+    updateclientdialog updateDialog(id, nom, adresse, contact, this);
+
+    if (updateDialog.exec() == QDialog::Accepted) {
+        // Get the updated values
+        QString newNom = updateDialog.getNom();
+        QString newAdresse = updateDialog.getAdresse();
+        QString newContact = updateDialog.getContact();
+
+        // Update the database
+        QSqlQuery query;
+        query.prepare("UPDATE CLIENT SET NOM = :nom, ADRESSE = :adresse, CONTACT = :contact "
+                      "WHERE IDENTIFIANT = :id");
+        query.bindValue(":nom", newNom);
+        query.bindValue(":adresse", newAdresse);
+        query.bindValue(":contact", newContact);
+        query.bindValue(":id", id);
+
+        if (query.exec()) {
+            QMessageBox::information(this, "Success", "Client updated successfully!");
+            refreshClientList(); // Refresh the table view
+        } else {
+            QMessageBox::critical(this, "Error", "Failed to update client: " + query.lastError().text());
+        }
+    }
+}
+
+void MainWindow::on_deleteButton_clicked()
+{
+    // Get the current selection
+    QModelIndex currentIndex = ui->clientTableView->currentIndex();
+    if (!currentIndex.isValid()) {
+        QMessageBox::warning(this, "Selection Error", "Please select a client to delete.");
+        return;
+    }
+
+    // Get the client ID and name for confirmation
+    QString id = tableModel->data(tableModel->index(currentIndex.row(), 2)).toString(); // IDENTIFIANT column
+    QString nom = tableModel->data(tableModel->index(currentIndex.row(), 0)).toString(); // NOM column
+
+    // Confirm deletion
+    QMessageBox::StandardButton reply = QMessageBox::question(this, "Confirm Deletion",
+                                                              "Are you sure you want to delete client: " + nom + "?",
+                                                              QMessageBox::Yes|QMessageBox::No);
+
+    if (reply == QMessageBox::Yes) {
+        // Delete from database
+        QSqlQuery query(cnx.db);
+        query.prepare("DELETE FROM CLIENT WHERE IDENTIFIANT = :id");
+        query.bindValue(":id", id);
+
+        if (query.exec()) {
+            QMessageBox::information(this, "Success", "Client deleted successfully!");
+            refreshClientList(); // Refresh the table view
+        } else {
+            QMessageBox::critical(this, "Error", "Failed to delete client: " + query.lastError().text());
+        }
+    }
+}
+
+void MainWindow::on_searchLineEdit_textChanged(const QString &text)
+{
+    // Create the filter condition for multiple columns
+    QString filter;
+    if (!text.isEmpty()) {
+        QStringList filters;
+        filters << QString("NOM LIKE '%%1%'").arg(text)
+                << QString("CONTACT LIKE '%%1%'").arg(text)
+                << QString("ADRESSE LIKE '%%1%'").arg(text)
+                << QString("IDENTIFIANT LIKE '%%1%'").arg(text);
+
+        // Combine filters with OR
+        filter = filters.join(" OR ");
+    }
+
+    // Apply the filter
+    tableModel->setFilter(filter);
+
+    // Debug output
+    qDebug() << "Applied filter:" << filter;
+    qDebug() << "Filtered rows:" << tableModel->rowCount();
+
+    if (tableModel->lastError().isValid()) {
+        qDebug() << "Filter error:" << tableModel->lastError().text();
+    }
+}
+
+void MainWindow::updateStatsChart()
+{
+    // Clear the old chart
+    statsChart->removeAllSeries();
+
+    // Create a new pie series
+    QPieSeries *series = new QPieSeries();
+
+    // Query to count clients by address
+    QSqlQuery query(cnx.db);
+    query.prepare("SELECT ADRESSE, COUNT(*) as count "
+                  "FROM CLIENT "
+                  "GROUP BY ADRESSE "
+                  "ORDER BY count DESC");
+
+    if (query.exec()) {
+        // Map to store address counts
+        QMap<QString, int> addressCounts;
+        int totalClients = 0;
+
+        // Collect the data
+        while (query.next()) {
+            QString address = query.value("ADRESSE").toString();
+            int count = query.value("count").toInt();
+            addressCounts[address] = count;
+            totalClients += count;
+        }
+
+        // Add slices to the pie series
+        for (auto it = addressCounts.begin(); it != addressCounts.end(); ++it) {
+            QString address = it.key();
+            int count = it.value();
+            qreal percentage = (count * 100.0) / totalClients;
+
+            // Create slice with percentage in label
+            QString label = QString("%1\n%2%\n(%3)")
+                                .arg(address)
+                                .arg(QString::number(percentage, 'f', 1))
+                                .arg(count);
+
+            QPieSlice *slice = series->append(label, count);
+
+            // Set random color for the slice
+            slice->setColor(QColor(rand() % 256, rand() % 256, rand() % 256));
+
+            // Make slices slightly exploded
+            slice->setExploded(true);
+            slice->setExplodeDistanceFactor(0.1);
+
+            // Connect hover signals to show/hide label
+            connect(slice, &QPieSlice::hovered, [slice](bool show) {
+                slice->setLabelVisible(show);
+            });
+        }
+    } else {
+        qDebug() << "Stats query failed:" << query.lastError().text();
+    }
+
+    // Add the series to the chart
+    statsChart->addSeries(series);
+
+    // Set chart title
+    statsChart->setTitle("Client Distribution by Address");
+
+    // Customize the chart
+    statsChart->setAnimationOptions(QChart::AllAnimations);
+    statsChart->legend()->setVisible(true);
+    statsChart->legend()->setAlignment(Qt::AlignRight);
+
+    // Update the view
+    chartView->setChart(statsChart);
+}
+
+
+
+
+void MainWindow::on_pdfButton_clicked()
+{
+    QString fileName = QFileDialog::getSaveFileName(this,
+                                                    tr("Save PDF"), QString(),
+                                                    tr("PDF Files (*.pdf);;All Files (*)"));
+
+    if (fileName.isEmpty())
+        return;
+
+    if (!fileName.endsWith(".pdf"))
+        fileName += ".pdf";
+
+    QPrinter printer(QPrinter::HighResolution);
+    printer.setOutputFormat(QPrinter::PdfFormat);
+    printer.setOutputFileName(fileName);
+    printer.setPageSize(QPageSize(QPageSize::A4));
+
+    QPainter painter(&printer);
+    painter.begin(&printer);
+
+    // Fonts and settings
+    QFont titleFont("Arial", 12, QFont::Bold);    // Reduced from 16 to 12
+    QFont headerFont("Arial", 8, QFont::Bold);    // Reduced from 10 to 8
+    QFont contentFont("Arial", 7);                // Reduced from 9 to 7
+
+    // Adjusted margins
+    const int margin = 40;
+    const int rowHeight = 600;                     // Keeping this as per the original code
+    int currentY = margin;
+
+    // Get page width excluding margins
+    int pageWidth = printer.pageRect(QPrinter::Point).width() - (2 * margin);
+
+    // Column widths (keeping as per the original code)
+    QVector<int> columnWidths = {
+        static_cast<int>(pageWidth * 0.20 * 9),  // Name
+        static_cast<int>(pageWidth * 0.20 * 9),  // Contact
+        static_cast<int>(pageWidth * 0.15 * 9),  // ID
+        static_cast<int>(pageWidth * 0.45 * 9)   // Address - increased for longer text
+    };
+
+    // Draw title
+    painter.setFont(titleFont);
+    QRect titleRect(margin, currentY, pageWidth, rowHeight * 1.5);
+    painter.drawText(titleRect, Qt::AlignCenter, "Client List");
+    currentY += rowHeight * 1.5;
+
+    // Draw date with smaller spacing
+    painter.setFont(contentFont);
+    QString datetime = QDateTime::currentDateTime().toString("Generated on: yyyy-MM-dd hh:mm:ss");
+    painter.drawText(margin, currentY, datetime);
+    currentY += rowHeight;
+
+    // Function to draw table row with borders
+    auto drawTableRow = [&](const QStringList& rowData, const QFont& font, bool isHeader = false) {
+        painter.setFont(font);
+        int currentX = margin;
+
+        // Draw horizontal line above
+        painter.drawLine(margin, currentY, margin + pageWidth, currentY);
+
+        for (int i = 0; i < rowData.size(); ++i) {
+            // Draw cell borders
+            QRect cellRect(currentX, currentY, columnWidths[i], rowHeight);
+            painter.drawRect(cellRect);
+
+            // Draw text with smaller padding
+            QString text = rowData[i];
+            QFontMetrics fm(font);
+            QString elidedText = fm.elidedText(text, Qt::ElideRight, columnWidths[i] - 4); // Reduced padding
+
+            QRect textRect = cellRect.adjusted(2, 0, -2, 0); // Reduced padding from 5 to 2
+            painter.drawText(textRect, Qt::AlignLeft | Qt::AlignVCenter, elidedText);
+
+            currentX += columnWidths[i];
+        }
+
+        return currentY + rowHeight;
+    };
+
+    // Draw headers
+    QStringList headers = {"Name", "Contact", "ID", "Address"};
+    currentY = drawTableRow(headers, headerFont, true);
+
+    // Draw content
+    painter.setFont(contentFont);
+    for (int row = 0; row < tableModel->rowCount(); ++row) {
+        // Check if the next row will fit on the current page
+        /*if (currentY + rowHeight > printer.pageRect(QPrinter::Point).height() - margin) {
+            // Check if adding another row will exceed the page bottom and start a new page
+            printer.newPage();
+            currentY = margin;
+
+            // Redraw headers on new page
+            currentY = drawTableRow(headers, headerFont, true);
+        }*/
+
+        // Prepare row data
+        QStringList rowData;
+        for (int col = 0; col < tableModel->columnCount(); ++col) {
+            rowData << tableModel->data(tableModel->index(row, col)).toString();
+        }
+
+        // Draw the row
+        currentY = drawTableRow(rowData, contentFont);
+    }
+
+    // Draw final horizontal line
+    painter.drawLine(margin, currentY, margin + pageWidth, currentY);
+
+    painter.end();
+
+    QMessageBox::information(this, "Success", "PDF has been generated successfully!");
+}
+
+
+void MainWindow::updateStarRating(int rating) {
+    currentRating = rating;
+
+    // Update star appearance
+    for (int i = 0; i < starButtons.size(); i++) {
+        if (i < rating) {
+            starButtons[i]->setText("★");
+            starButtons[i]->setStyleSheet(
+                "QPushButton { font-size: 24px; border: none; color: gold; }");
+        } else {
+            starButtons[i]->setText("☆");
+            starButtons[i]->setStyleSheet(
+                "QPushButton { font-size: 24px; border: none; } "
+                "QPushButton:hover { color: gold; }");
+        }
+    }
+}
+
+void MainWindow::on_submitReviewButton_clicked() {
+    if (currentRating == 0) {
+        QMessageBox::warning(this, "Rating Required", "Please select a rating before submitting.");
+        return;
+    }
+
+    QTextEdit* descriptionEdit = findChild<QTextEdit*>("descriptionEdit");
+    if (!descriptionEdit) return;
+
+    QString description = descriptionEdit->toPlainText().trimmed();
+    if (description.isEmpty()) {
+        QMessageBox::warning(this, "Description Required", "Please enter a review description.");
+        return;
+    }
+
+    // Insert into database
+    QSqlQuery query;
+    query.prepare("INSERT INTO review (score, DESCRIPTION) VALUES (:score, :description)");
+    query.bindValue(":score", currentRating);
+    query.bindValue(":description", description);
+
+    if (query.exec()) {
+        QMessageBox::information(this, "Success", "Review submitted successfully!");
+        // Reset form
+        updateStarRating(0);
+        descriptionEdit->clear();
+    } else {
+        QMessageBox::critical(this, "Error", "Failed to submit review: " + query.lastError().text());
+    }
+}
+
+
+
+
+void MainWindow::setupMessagingTab()
+{
+    if ( ui->clientTableView_2) {
+        QVBoxLayout* layout = new QVBoxLayout(ui->chatTab);
+
+        // Add a prominent button at the top to open the popup chat
+        QPushButton *showPopupButton = new QPushButton("Open Chat Window", ui->chatTab);
+        showPopupButton->setStyleSheet(
+            "QPushButton {"
+            "    background-color: #4CAF50;"
+            "    color: white;"
+            "    padding: 8px 16px;"
+            "    font-size: 14px;"
+            "    border-radius: 4px;"
+            "}"
+            "QPushButton:hover {"
+            "    background-color: #45a049;"
+            "}"
+            );
+        layout->addWidget(showPopupButton);
+
+        chatHistory = new QTextEdit(ui->chatTab);
+        chatHistory->setReadOnly(true);
+        layout->addWidget(chatHistory);
+
+        QHBoxLayout *inputLayout = new QHBoxLayout();
+        messageInput = new QLineEdit(ui->chatTab);
+        sendButton = new QPushButton("Send", ui->chatTab);
+
+        inputLayout->addWidget(messageInput);
+        inputLayout->addWidget(sendButton);
+
+        layout->addLayout(inputLayout);
+
+        connect(sendButton, &QPushButton::clicked, this, &MainWindow::onMainWindowMessageSent);
+        connect(messageInput, &QLineEdit::returnPressed, this, &MainWindow::onMainWindowMessageSent);
+        connect(showPopupButton, &QPushButton::clicked, this, [this]() {
+            messageDialog->show();
+            messageDialog->raise();
+            messageDialog->activateWindow();
+        });
+    }
+}
+void MainWindow::onMainWindowMessageSent()
+{
+    QString message = messageInput->text().trimmed();
+    if (!message.isEmpty()) {
+        QString timestamp = QDateTime::currentDateTime().toString("hh:mm:ss");
+        QString formattedMessage = QString("[%1] Rjab: %2").arg(timestamp, message);
+        chatHistory->append(formattedMessage);
+        messageDialog->addMessage(message, true);
+        messageInput->clear();
+    }
+}
+
+void MainWindow::onPopupMessageReceived(const QString &message)
+{
+    QString timestamp = QDateTime::currentDateTime().toString("hh:mm:ss");
+    QString formattedMessage = QString("[%1] Aymen: %2").arg(timestamp, message);
+    chatHistory->append(formattedMessage);
+}

@@ -8,6 +8,7 @@
 
 class Connection
 {
+public:
     QSqlDatabase db;
 public:
     Connection();

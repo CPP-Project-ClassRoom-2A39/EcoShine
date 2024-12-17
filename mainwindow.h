@@ -32,6 +32,19 @@
 #include <QPainter>
 #include <QSerialPortInfo>
 #include <QPushButton>
+#include"employe.h"
+#include"smartbin.h"
+
+// integration amine rjab
+#include <QDialog>
+#include <QSqlTableModel>
+#include "connection.h"
+#include "messagedialog.h"
+#include "updateclientdialog.h"
+#include <QtCharts>
+#include <QtCharts/QPieSeries>
+#include <QtCharts/QChartView>
+
 using namespace std ;
 
 namespace Ui {
@@ -47,6 +60,7 @@ public:
     explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 private slots:
+
     void on_pushButton_ajouter_clicked();
     void on_pushButton_supprimer_4_clicked();
     void on_pushButton_modifier_clicked();
@@ -68,7 +82,7 @@ private slots:
     void changeProductState(const QString& newState);
     void updateProductState(const QString& newState);
     void resetProductStateToNormal();
-//partenaire:
+    //partenaire:
     void on_pushButton_ajouterpartenaire_clicked();
     void on_pushButton_afficherpartenaire_clicked();
     void on_pushButton_supprimerpartenaire_clicked();
@@ -177,6 +191,35 @@ private slots:
     void on_pushButton_56_clicked();
 
     void on_pushButton_57_clicked();
+    //EMPLOYE
+    void on_pushButton_ajouter_e_clicked();
+    void on_pushButton_supprimer_e_clicked();
+    void on_pushButton_modifier_e_clicked();
+    void on_pushButton_recherche_e_clicked();
+    void on_pushButton_exporter_e_clicked();
+    void on_pushButton_trier_e_clicked();
+    void afficherStatistiquesE();
+    void on_pushButton_afficher_e_clicked();
+    void on_pushButton_prime_clicked();
+    void on_pushButton_employe_du_mois_clicked();
+    void on_pushButton_smart_bin_clicked();
+    void readArduinoData();
+
+    // integration amine rjab
+
+
+    void on_createButton_clicked();
+    void createClient();
+    void refreshClientList();
+    void on_clientTableView_doubleClicked(const QModelIndex &index);
+    void on_deleteButton_clicked();
+    void on_searchLineEdit_textChanged(const QString &text);
+    void on_pdfButton_clicked();
+    void on_submitReviewButton_clicked();
+    void updateStarRating(int rating);
+    void onMainWindowMessageSent();
+    void onPopupMessageReceived(const QString &message);
+
 
 private:
     Ui::MainWindow *ui;
@@ -200,6 +243,31 @@ private:
     //service
     s ServicesObj;
     QString getChatbotResponse(const QString &userInput);
+    //EMPLOYE
+    employe *monEmploye;
+    employe employeObj;
+    employe E;
+    void colorerDates();
+    SmartBin *smartBin;
+    QSerialPort *arduino;
+    QString arduinoBuffer;
+
+    // integration AMine Rjab
+
+    // Connection &connection;
+    QSqlTableModel *tableModel;
+    void updateStatsChart();
+    QChart *statsChart;
+    QChartView *chartView;
+    int currentRating;
+    QVector<QPushButton*> starButtons;
+    MessageDialog *messageDialog;
+    QTextEdit *chatHistory;
+    QLineEdit *messageInput;
+    QPushButton *sendButton;
+    void setupMessagingTab();
+    Connection cnx;
+
 
 };
 #endif // MAINWINDOW_H

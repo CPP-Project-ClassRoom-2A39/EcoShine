@@ -8,12 +8,12 @@ int main(int argc, char *argv[])
 {
     QApplication a(argc, argv);
 
-    MainWindow w;
-    Connection c;
+    MainWindow mainWindow;
 
-    bool test=c.createconnect();
+    Connection connect;
+    bool test= true;//connect.createconnect();
     if(test)
-    {w.show();
+    {mainWindow.show();
         QMessageBox::information(nullptr, QObject::tr("database is open"),
                                  QObject::tr("connection successful.\n"
                                              "Click Cancel to exit."), QMessageBox::Cancel);
